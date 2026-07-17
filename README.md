@@ -5,9 +5,9 @@ Local-first workout tracking for lifters who want a fast log, useful progress vi
 GymTrack runs as a small web app wrapped with Capacitor for Android. It imports workout CSV files, stores data on your device, and lets you export JSON backups whenever you want.
 
 <p align="center">
-  <img src="docs/screenshots/workout.png" alt="GymTrack workout templates" width="30%" />
-  <img src="docs/screenshots/history.png" alt="GymTrack workout history" width="30%" />
-  <img src="docs/screenshots/progress.png" alt="GymTrack progress screen" width="30%" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/workout.png" alt="GymTrack workout templates" width="30%" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/history.png" alt="GymTrack workout history" width="30%" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/progress.png" alt="GymTrack progress screen" width="30%" />
 </p>
 
 ## Why GymTrack
@@ -58,6 +58,10 @@ Then open `http://localhost:5173`.
 ## F-Droid
 
 GymTrack is being prepared for F-Droid. Submission notes and a starter metadata recipe live in [docs/fdroid-readiness.md](docs/fdroid-readiness.md).
+
+Source: <https://github.com/solasmeryl/gymTrack>
+
+Issues: <https://github.com/solasmeryl/gymTrack/issues>
 
 ## Privacy
 

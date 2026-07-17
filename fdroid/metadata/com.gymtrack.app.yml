@@ -1,0 +1,32 @@
+Categories:
+  - Sports & Health
+License: ISC
+AuthorName: solasmeryl
+WebSite: https://github.com/solasmeryl/gymTrack
+SourceCode: https://github.com/solasmeryl/gymTrack
+IssueTracker: https://github.com/solasmeryl/gymTrack/issues
+Changelog: https://github.com/solasmeryl/gymTrack/releases
+
+AutoName: GymTrack
+
+RepoType: git
+Repo: https://github.com/solasmeryl/gymTrack.git
+
+Builds:
+  - versionName: '1.0'
+    versionCode: 1
+    subdir: android
+    sudo:
+      - apt-get update
+      - apt-get install -y nodejs npm
+    init:
+      - cd .. && npm ci
+      - cd .. && npm run build
+      - cd .. && npx cap sync android
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: '1.0'
+CurrentVersionCode: 1

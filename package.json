@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "description": "A local-first workout tracker for CSV imports and manual logging.",
   "main": "app.js",
+  "homepage": "https://github.com/solasmeryl/gymTrack#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solasmeryl/gymTrack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/solasmeryl/gymTrack/issues"
+  },
   "scripts": {
     "build": "rm -rf www && mkdir -p www && cp index.html app.js styles.css www/",
     "android": "npm run build && npx cap sync android",
@@ -12,7 +20,7 @@
     "android:install": "npm run android:debug && adb install -r android/app/build/outputs/apk/debug/app-debug.apk"
   },
   "keywords": [],
-  "author": "",
+  "author": "solasmeryl",
   "license": "ISC",
   "type": "module",
   "dependencies": {
