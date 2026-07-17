@@ -1,0 +1,1 @@
+Local-first workout tracker for CSV imports and manual logging.

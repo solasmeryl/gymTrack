@@ -1,0 +1,12 @@
+GymTrack is a local-first workout log for lifters who want to keep their data on their own device.
+
+Features:
+
+- Import workout CSV files
+- Log workouts manually
+- Track workout and recovery timers
+- Browse workout history and exercise progress
+- Create custom exercises
+- Export and import JSON backups
+
+GymTrack does not require an account, does not use ads, and does not send workout data to a server.

@@ -1,0 +1,27 @@
+{
+  "name": "gymtrack",
+  "version": "1.0.0",
+  "description": "A local-first workout tracker for CSV imports and manual logging.",
+  "main": "app.js",
+  "scripts": {
+    "build": "rm -rf www && mkdir -p www && cp index.html app.js styles.css www/",
+    "android": "npm run build && npx cap sync android",
+    "android:debug": "npm run android && cd android && ./gradlew assembleDebug",
+    "android:release": "npm run android && cd android && ./gradlew assembleRelease",
+    "fdroid:prepare": "npm ci && npm run build && npx cap sync android",
+    "android:install": "npm run android:debug && adb install -r android/app/build/outputs/apk/debug/app-debug.apk"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/local-notifications": "^8.2.0",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1"
+  }
+}

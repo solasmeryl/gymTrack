@@ -1,0 +1,8 @@
+{
+  "appId": "com.gymtrack.app",
+  "appName": "GymTrack",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
