@@ -1,3 +1,5 @@
+import { BUILT_IN_EXERCISES, EXERCISE_DATASET } from "./exercise-dataset.js";
+
 const STORAGE_KEY = "gymtrack:data:v1";
 const EXERCISE_STORAGE_KEY = "gymtrack:exercises:v1";
 const ACTIVE_STORAGE_KEY = "gymtrack:active:v1";
@@ -5,6 +7,7 @@ const LEGACY_STORAGE_KEY = "openstrong:data:v1";
 const LEGACY_EXERCISE_STORAGE_KEY = "openstrong:exercises:v1";
 const LEGACY_ACTIVE_STORAGE_KEY = "openstrong:active:v1";
 const WORKOUT_NOTIFICATION_ID = 1001;
+const EXERCISE_LIST_LIMIT = 100;
 
 const state = {
   tab: "start",
@@ -14,6 +17,10 @@ const state = {
   search: "",
   workoutFilter: "all",
   exerciseSort: "name",
+  exerciseDetailOpen: false,
+  exercisePickerSearch: "",
+  exerciseCategory: "all",
+  exercisePickerCategory: "all",
   activeWorkout: loadActiveWorkout(),
   customExercises: loadCustomExercises(),
   toast: "",
@@ -67,6 +74,59 @@ function saveCustomExercises() {
   localStorage.setItem(EXERCISE_STORAGE_KEY, JSON.stringify(state.customExercises));
   persistNative(EXERCISE_STORAGE_KEY, state.customExercises);
 }
+
+const builtInExerciseByName = new Map(
+  BUILT_IN_EXERCISES.map((exercise) => [exercise.name.toLocaleLowerCase(), exercise]),
+);
+
+function getBuiltInExercise(name) {
+  return builtInExerciseByName.get(String(name || "").trim().toLocaleLowerCase()) || null;
+}
+
+function canonicalExerciseName(name) {
+  const cleanName = String(name || "").trim() || "Unknown exercise";
+  return getBuiltInExercise(cleanName)?.name || cleanName;
+}
+
+function registerCustomExercises(workouts, importedCustomExercises = []) {
+  const customNames = new Map(state.customExercises.map((name) => [name.toLocaleLowerCase(), name]));
+  const candidates = [
+    ...importedCustomExercises,
+    ...workouts.flatMap((workout) => (workout.exercises || []).map((exercise) => exercise.name)),
+  ];
+  candidates.forEach((name) => {
+    const cleanName = String(name || "").trim();
+    if (cleanName && !getBuiltInExercise(cleanName) && !customNames.has(cleanName.toLocaleLowerCase())) {
+      customNames.set(cleanName.toLocaleLowerCase(), cleanName);
+    }
+  });
+  state.customExercises = [...customNames.values()];
+  saveCustomExercises();
+}
+
+function normalizeWorkoutExerciseNames(workouts) {
+  workouts.forEach((workout) => {
+    (workout.exercises || []).forEach((exercise) => {
+      exercise.name = canonicalExerciseName(exercise.name);
+    });
+  });
+  return workouts;
+}
+
+function migrateLoadedExerciseData() {
+  const workouts = state.data?.workouts || [];
+  const activeWorkouts = state.activeWorkout ? [state.activeWorkout] : [];
+  if (workouts.length) {
+    const importedAt = state.data.importedAt;
+    normalizeWorkoutExerciseNames(workouts);
+    registerCustomExercises(workouts);
+    state.data = buildDataModel(workouts);
+    state.data.importedAt = importedAt;
+  }
+  if (activeWorkouts.length) normalizeWorkoutExerciseNames(activeWorkouts);
+}
+
+migrateLoadedExerciseData();
 
 function saveData(data) {
   state.data = data;
@@ -300,14 +360,19 @@ function saveWorkouts(workouts) {
 }
 
 function getExerciseCatalog() {
-  const imported = state.data?.exercises.map((exercise) => exercise.name) || [];
-  return [...new Set([...imported, ...state.customExercises])]
+  return [...new Set([...BUILT_IN_EXERCISES.map((exercise) => exercise.name), ...state.customExercises])]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
 }
 
+function getExerciseCategories() {
+  return [...new Set(BUILT_IN_EXERCISES.map((exercise) => exercise.bodyPart).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function getExerciseStats(name) {
-  return state.data?.exercises.find((exercise) => exercise.name === name) || {
+  const definition = getBuiltInExercise(name);
+  const stats = state.data?.exercises.find((exercise) => exercise.name === name) || {
     name,
     sessions: 0,
     sets: 0,
@@ -316,6 +381,7 @@ function getExerciseStats(name) {
     bestE1rm: 0,
     history: [],
   };
+  return { ...stats, definition };
 }
 
 function getLastExerciseSet(name) {
@@ -331,6 +397,63 @@ function getLastExerciseSet(name) {
     }
   }
   return { weight: 0, reps: 0 };
+}
+
+function getExercisePickerResults(query = "") {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  return getExerciseCatalog()
+    .map((name) => ({ name, stats: getExerciseStats(name), definition: getBuiltInExercise(name) }))
+    .filter(({ name, definition }) => {
+      if (state.exercisePickerCategory === "custom" && definition) return false;
+      if (state.exercisePickerCategory !== "all" && state.exercisePickerCategory !== "custom" && definition?.bodyPart !== state.exercisePickerCategory) return false;
+      const searchable = `${name} ${definition?.target || ""} ${definition?.equipment || ""} ${definition?.bodyPart || ""}`.toLocaleLowerCase();
+      return terms.every((term) => searchable.includes(term));
+    })
+    .sort((a, b) => b.stats.sessions - a.stats.sessions || a.name.localeCompare(b.name))
+    .slice(0, 20);
+}
+
+function getFilteredExercises() {
+  const query = state.search.trim().toLocaleLowerCase();
+  return getExerciseCatalog()
+    .map(getExerciseStats)
+    .filter((exercise) => {
+      if (state.exerciseCategory === "custom" && exercise.definition) return false;
+      if (state.exerciseCategory !== "all" && state.exerciseCategory !== "custom" && exercise.definition?.bodyPart !== state.exerciseCategory) return false;
+      return exercise.name.toLocaleLowerCase().includes(query);
+    })
+    .sort((a, b) => state.exerciseSort === "sessions"
+      ? b.sessions - a.sessions || a.name.localeCompare(b.name)
+      : a.name.localeCompare(b.name));
+}
+
+function renderExerciseRows(exercises = getFilteredExercises()) {
+  const visible = exercises.slice(0, EXERCISE_LIST_LIMIT);
+  const rows = visible.map((exercise) => `
+    <button class="exercise-row" data-select-exercise="${escapeAttr(exercise.name)}">
+      <span class="exercise-title">${escapeHtml(exercise.name)}</span>
+      <span class="meta-line">
+        <span>${exercise.sessions}x</span>
+        ${exercise.bestE1rm ? `<span>Best ${exercise.bestE1rm.toFixed(1)} kg</span>` : ""}
+        <span>${exercise.definition ? escapeHtml(exercise.definition.target) : "Custom"}</span>
+      </span>
+    </button>
+  `).join("");
+  if (!rows) return `<div class="empty">No matching exercises.</div>`;
+  const remaining = exercises.length - visible.length;
+  return `${rows}${remaining > 0 ? `<div class="exercise-list-note">${remaining.toLocaleString()} more — search or choose a category to narrow the list.</div>` : ""}`;
+}
+
+function renderExercisePickerResults(query = state.exercisePickerSearch) {
+  const results = getExercisePickerResults(query);
+  return results.length
+    ? results.map(({ name, stats, definition }) => `
+        <button class="exercise-picker-result" type="button" data-pick-exercise="${escapeAttr(name)}">
+          <span>${escapeHtml(name)}</span>
+          <small>${stats.sessions ? `${stats.sessions} sessions` : escapeHtml(definition?.target || "Custom")}</small>
+        </button>
+      `).join("")
+    : `<div class="empty small">No matching exercise.</div>`;
 }
 
 function parseWorkoutCsv(text) {
@@ -423,6 +546,7 @@ function parseDelimited(text) {
 }
 
 function buildDataModel(workouts) {
+  normalizeWorkoutExerciseNames(workouts);
   const exercises = new Map();
 
   workouts.forEach((workout) => {
@@ -986,17 +1110,12 @@ function renderExerciseBlock(exercise) {
 }
 
 function renderExercises() {
-  const query = state.search.trim().toLowerCase();
-  const exercises = getExerciseCatalog()
-    .map(getExerciseStats)
-    .filter((exercise) => exercise.name.toLowerCase().includes(query))
-    .sort((a, b) => {
-      if (state.exerciseSort === "sessions") return b.sessions - a.sessions || a.name.localeCompare(b.name);
-      return a.name.localeCompare(b.name);
-    });
-  const selected = exercises.find((exercise) => exercise.name === state.selectedExercise) || exercises[0];
+  const exercises = getFilteredExercises();
+  const selected = state.exerciseDetailOpen
+    ? exercises.find((exercise) => exercise.name === state.selectedExercise)
+    : null;
   return `
-    <section class="grid-two">
+    <section class="stack">
       <div>
         <div class="card create-exercise-card">
           <input class="field" data-new-catalog-exercise placeholder="New exercise name" />
@@ -1004,38 +1123,47 @@ function renderExercises() {
         </div>
         <div class="toolbar">
           <input class="field" data-input="search" placeholder="Search exercises" value="${escapeAttr(state.search)}" />
+          <select class="select" data-input="exercise-category">
+            <option value="all">All categories</option>
+            ${getExerciseCategories().map((category) => `<option value="${escapeAttr(category)}" ${state.exerciseCategory === category ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}
+            <option value="custom" ${state.exerciseCategory === "custom" ? "selected" : ""}>Custom</option>
+          </select>
           <select class="select" data-input="exercise-sort">
             <option value="name" ${state.exerciseSort === "name" ? "selected" : ""}>Name</option>
             <option value="sessions" ${state.exerciseSort === "sessions" ? "selected" : ""}>Times performed</option>
           </select>
         </div>
-        <div class="stack">
-          ${exercises
-            .map(
-              (exercise) => `
-                <button class="exercise-row" data-select-exercise="${escapeAttr(exercise.name)}">
-                  <span class="exercise-title">${escapeHtml(exercise.name)}</span>
-                  <span class="meta-line">
-                    <span>${exercise.sessions}x</span>
-                    ${exercise.bestE1rm ? `<span>Best ${exercise.bestE1rm.toFixed(1)} kg</span>` : `<span>Custom</span>`}
-                  </span>
-                </button>
-              `,
-            )
-            .join("") || `<div class="empty">No matching exercises.</div>`}
+        <div class="stack" data-exercise-list>
+          ${renderExerciseRows(exercises)}
         </div>
       </div>
-      ${selected ? renderExerciseDetail(selected) : ""}
+      ${
+        selected
+          ? `<div class="exercise-detail-overlay">
+              <div class="exercise-detail-toolbar">
+                <button class="button" data-action="close-exercise-detail" aria-label="Back to exercise list">← Exercises</button>
+              </div>
+              ${renderExerciseDetail(selected)}
+            </div>`
+          : ""
+      }
     </section>
   `;
 }
 
 function renderExerciseDetail(exercise) {
   const hasHistory = exercise.history.length > 0;
+  const definition = exercise.definition || getBuiltInExercise(exercise.name);
   return `
     <aside class="detail-panel">
       <div class="detail-header">
-        <h2>${escapeHtml(exercise.name)}</h2>
+        <div class="exercise-detail-heading">
+          ${definition ? `<img class="exercise-thumbnail" src="${escapeAttr(`${EXERCISE_DATASET.mediaRoot}/${definition.image}`)}" alt="${escapeAttr(exercise.name)} demonstration" loading="lazy" />` : `<div class="exercise-thumbnail custom-thumbnail" aria-hidden="true">C</div>`}
+          <div>
+            <h2>${escapeHtml(exercise.name)}</h2>
+            ${definition ? `<div class="exercise-tags"><span class="pill green">${escapeHtml(definition.bodyPart)}</span><span class="pill">${escapeHtml(definition.equipment)}</span><span class="pill blue">${escapeHtml(definition.target)}</span></div>` : `<span class="pill">Custom exercise</span>`}
+          </div>
+        </div>
         <div class="meta-line">
           <span>${exercise.sessions} sessions</span>
           <span>${exercise.sets} sets</span>
@@ -1043,6 +1171,19 @@ function renderExerciseDetail(exercise) {
         </div>
       </div>
       <div class="detail-body">
+        ${
+          definition
+            ? `<section class="exercise-guide">
+                <div class="exercise-animation-wrap">
+                  <img class="exercise-animation" src="${escapeAttr(`${EXERCISE_DATASET.mediaRoot}/${definition.animation}`)}" alt="Animated demonstration of ${escapeAttr(exercise.name)}" loading="eager" />
+                </div>
+                <div class="section-head"><h3>How to do it</h3></div>
+                <ol>${definition.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+                ${definition.secondaryMuscles.length ? `<p class="small muted"><strong>Also works:</strong> ${escapeHtml(definition.secondaryMuscles.join(", "))}</p>` : ""}
+                <a class="media-attribution" href="https://gymvisual.com/" target="_blank" rel="noopener noreferrer">${escapeHtml(EXERCISE_DATASET.attribution)}</a>
+              </section>`
+            : ""
+        }
         ${hasHistory ? `<div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>` : `<div class="empty">No logged sets yet.</div>`}
         <div class="stack">
           ${exercise.history
@@ -1144,6 +1285,7 @@ function renderImport(isFirstRun) {
             ${state.data ? `<button class="button danger" data-action="clear-data">Clear data</button>` : ""}
           </div>
           <div class="small muted">Import a workout CSV or a GymTrack JSON export.</div>
+          <div class="small muted">${EXERCISE_DATASET.uniqueNames.toLocaleString()} built-in exercises from ${EXERCISE_DATASET.count.toLocaleString()} source records are always available.</div>
         </div>
       </div>
       <div class="card">
@@ -1196,14 +1338,19 @@ function renderActiveWorkout() {
           }
           ${workout.exercises.map(renderActiveExercise).join("")}
           <div class="card">
-            <div class="add-exercise-grid">
-              <select class="select" data-new-exercise>
-                <option value="">Select exercise</option>
-                ${getExerciseCatalog()
-                  .map((name) => `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`)
-                  .join("")}
+            <div class="exercise-picker">
+              <select class="select" data-exercise-picker-category>
+                <option value="all">All categories</option>
+                ${getExerciseCategories().map((category) => `<option value="${escapeAttr(category)}" ${state.exercisePickerCategory === category ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}
+                <option value="custom" ${state.exercisePickerCategory === "custom" ? "selected" : ""}>Custom</option>
               </select>
-              <button class="button primary" data-action="add-exercise">Add</button>
+              <div class="add-exercise-grid">
+                <input class="field" type="search" data-new-exercise autocomplete="off" placeholder="Search exercise, muscle, or equipment" value="${escapeAttr(state.exercisePickerSearch)}" />
+                <button class="button primary" data-action="add-exercise">Add</button>
+              </div>
+              <div class="exercise-picker-results" data-exercise-picker-results>
+                ${renderExercisePickerResults()}
+              </div>
             </div>
           </div>
           <textarea class="textarea" data-active-notes placeholder="Workout notes">${escapeHtml(workout.notes || "")}</textarea>
@@ -1248,11 +1395,22 @@ function renderActiveExercise(exercise, exerciseIndex) {
   `;
 }
 
+function bindExerciseSelectionButtons(root = document) {
+  root.querySelectorAll("[data-select-exercise]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedExercise = button.dataset.selectExercise;
+      state.exerciseDetailOpen = state.tab === "exercises";
+      render({ preserveScroll: true });
+    });
+  });
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       state.tab = button.dataset.tab;
       state.search = "";
+      state.exerciseDetailOpen = false;
       render();
     });
   });
@@ -1269,12 +1427,7 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-select-exercise]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedExercise = button.dataset.selectExercise;
-      render();
-    });
-  });
+  bindExerciseSelectionButtons();
 
   document.querySelectorAll("[data-edit-workout]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -1338,9 +1491,20 @@ function bindEvents() {
   document.querySelectorAll("[data-input]").forEach((input) => {
     const eventName = input.tagName === "SELECT" ? "change" : "input";
     input.addEventListener(eventName, () => {
-      if (input.dataset.input === "search") state.search = input.value;
+      if (input.dataset.input === "search") {
+        state.search = input.value;
+        if (state.tab === "exercises") {
+          const list = document.querySelector("[data-exercise-list]");
+          if (list) {
+            list.innerHTML = renderExerciseRows();
+            bindExerciseSelectionButtons(list);
+          }
+          return;
+        }
+      }
       if (input.dataset.input === "workout-filter") state.workoutFilter = input.value;
       if (input.dataset.input === "exercise-sort") state.exerciseSort = input.value;
+      if (input.dataset.input === "exercise-category") state.exerciseCategory = input.value;
       if (input.dataset.input === "selected-exercise") state.selectedExercise = input.value;
       render();
     });
@@ -1369,6 +1533,7 @@ function bindActiveWorkoutInputs() {
   const name = document.querySelector("[data-active-name]");
   const notes = document.querySelector("[data-active-notes]");
   const newExercise = document.querySelector("[data-new-exercise]");
+  const exerciseCategory = document.querySelector("[data-exercise-picker-category]");
   const date = document.querySelector("[data-active-date]");
   const duration = document.querySelector("[data-active-duration]");
 
@@ -1403,8 +1568,32 @@ function bindActiveWorkoutInputs() {
   }
 
   if (newExercise) {
+    const bindPickerResults = () => {
+      document.querySelectorAll("[data-pick-exercise]").forEach((button) => {
+        button.addEventListener("click", () => addExerciseToActiveWorkout(button.dataset.pickExercise));
+      });
+    };
+    const updatePickerResults = () => {
+      const results = document.querySelector("[data-exercise-picker-results]");
+      if (results) {
+        results.innerHTML = renderExercisePickerResults(newExercise.value);
+        bindPickerResults();
+      }
+    };
+    bindPickerResults();
+    newExercise.addEventListener("input", () => {
+      state.exercisePickerSearch = newExercise.value;
+      updatePickerResults();
+    });
     newExercise.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") handleAction("add-exercise");
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleAction("add-exercise");
+      }
+    });
+    exerciseCategory?.addEventListener("change", () => {
+      state.exercisePickerCategory = exerciseCategory.value;
+      updatePickerResults();
     });
   }
 
@@ -1429,7 +1618,21 @@ function bindActiveWorkoutInputs() {
   });
 }
 
+function addExerciseToActiveWorkout(name) {
+  if (!state.activeWorkout || !name) return;
+  const lastSet = getLastExerciseSet(name);
+  state.activeWorkout.exercises.push({ name, sets: [activeSet({ weight: lastSet.weight, reps: lastSet.reps })] });
+  state.exercisePickerSearch = "";
+  saveActiveWorkout();
+  render({ preserveScroll: true });
+}
+
 async function handleAction(action) {
+  if (action === "close-exercise-detail") {
+    state.exerciseDetailOpen = false;
+    render({ preserveScroll: true });
+  }
+
   if (action === "clear-data") {
     localStorage.removeItem(STORAGE_KEY);
     state.data = null;
@@ -1461,12 +1664,11 @@ async function handleAction(action) {
 
   if (action === "add-exercise") {
     const input = document.querySelector("[data-new-exercise]");
-    const name = input?.value.trim();
+    const query = input?.value.trim() || "";
+    const exact = getExerciseCatalog().find((name) => name.toLocaleLowerCase() === query.toLocaleLowerCase());
+    const name = exact || getExercisePickerResults(query)[0]?.name;
     if (!name) return;
-    const lastSet = getLastExerciseSet(name);
-    state.activeWorkout.exercises.push({ name, sets: [activeSet({ weight: lastSet.weight, reps: lastSet.reps })] });
-    saveActiveWorkout();
-    render({ preserveScroll: true });
+    addExerciseToActiveWorkout(name);
   }
 
   if (action === "add-catalog-exercise") {
@@ -1498,7 +1700,7 @@ async function handleAction(action) {
 }
 
 async function exportJson() {
-  const json = JSON.stringify(state.data, null, 2);
+  const json = JSON.stringify({ ...state.data, customExercises: state.customExercises }, null, 2);
   const fileName = `gymtrack-export-${new Date().toISOString().slice(0, 10)}.json`;
   const filesystem = window.Capacitor?.Plugins?.Filesystem;
   const share = window.Capacitor?.Plugins?.Share;
@@ -1543,6 +1745,7 @@ async function exportJson() {
 function importCsvText(text, name) {
   try {
     const data = parseWorkoutCsv(text);
+    registerCustomExercises(data.workouts);
     saveData(data);
     state.selectedExercise = data.exercises[0]?.name || "";
     state.selectedWorkoutId = data.workouts[0]?.id || null;
@@ -1560,6 +1763,8 @@ function importJsonText(text, name) {
     const parsed = JSON.parse(text);
     const workouts = Array.isArray(parsed.workouts) ? parsed.workouts : null;
     if (!workouts) throw new Error("Missing workouts");
+    normalizeWorkoutExerciseNames(workouts);
+    registerCustomExercises(workouts, Array.isArray(parsed.customExercises) ? parsed.customExercises : []);
     const data = buildDataModel(workouts);
     data.importedAt = parsed.importedAt || new Date().toISOString();
     saveData(data);

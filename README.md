@@ -17,7 +17,8 @@ GymTrack runs as a small web app wrapped with Capacitor for Android. It imports 
 - Start empty workouts or reuse recent routines.
 - Track live workout duration and recovery timers.
 - Browse history, exercise trends, volume, best weights, and estimated 1RM.
-- Create custom exercises.
+- Browse 1,318 uniquely named built-in exercises from 1,324 source records, with equipment, muscles, instructions, and online media previews.
+- Create custom exercises for movements that are not in the built-in catalog.
 - Export your data as JSON.
 
 ## Android
@@ -65,7 +66,7 @@ Issues: <https://github.com/solasmeryl/gymTrack/issues>
 
 ## Privacy
 
-Workout data stays on the device unless you export or share it yourself. See [docs/privacy-policy.md](docs/privacy-policy.md).
+Workout data stays on the device unless you export or share it yourself. Exercise thumbnails and animations are loaded from the source dataset's GitHub repository when viewed, so those previews require a network connection. See [docs/privacy-policy.md](docs/privacy-policy.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Built With Codex
 

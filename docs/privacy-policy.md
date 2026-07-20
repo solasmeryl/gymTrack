@@ -6,6 +6,8 @@ GymTrack is a local-first workout tracker. The app stores workout history, exerc
 
 GymTrack does not require an account. GymTrack does not sell user data. GymTrack does not send workout data to our servers.
 
+When you open a built-in exercise, GymTrack may request its thumbnail or animation from `raw.githubusercontent.com`, where the source exercise dataset hosts the media. GitHub receives the normal technical information associated with that request, such as your IP address. Your workout history is not included in the request. Exercise text and metadata are bundled with the app and remain available offline.
+
 ## Data Stored On Device
 
 - Workout history imported from CSV files or entered in the app
@@ -16,6 +18,8 @@ GymTrack does not require an account. GymTrack does not sell user data. GymTrack
 ## Permissions
 
 GymTrack may ask for notification permission so it can show an ongoing workout timer while a workout is active. Notifications are optional and can be disabled in Android settings.
+
+GymTrack uses internet access only for optional built-in exercise image and animation previews.
 
 GymTrack uses Android file and share features only when you choose to import or export data.
 

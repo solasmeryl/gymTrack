@@ -12,7 +12,9 @@
     "url": "https://github.com/solasmeryl/gymTrack/issues"
   },
   "scripts": {
-    "build": "rm -rf www && mkdir -p www && cp index.html app.js styles.css www/",
+    "build": "rm -rf www && mkdir -p www && cp index.html app.js styles.css exercise-dataset.js www/",
+    "update:exercises": "node scripts/update-exercise-dataset.mjs",
+    "migrate:export": "node scripts/migrate-export-exercises.mjs",
     "android": "npm run build && npx cap sync android",
     "android:debug": "npm run android && cd android && ./gradlew assembleDebug",
     "android:release": "npm run android && cd android && ./gradlew assembleRelease",
